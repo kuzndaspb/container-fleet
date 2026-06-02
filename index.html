@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Планирование контейнерного парка</title>
+<!-- SheetJS: multiple CDN fallbacks -->
+<script>
+(function(){
+  var srcs = [
+    'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',
+    'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js',
+    'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'
+  ];
+  var idx = 0;
+  function tryLoad(){
+    if(idx >= srcs.length){ window._xlsxFailed = true; return; }
+    var s = document.createElement('script');
+    s.src = srcs[idx++];
+    s.onload = function(){ window._xlsxLoaded = true; };
+    s.onerror = function(){ tryLoad(); };
+    document.head.appendChild(s);
+  }
+  tryLoad();
+})();
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #1f2937;
+    --border: #30363d;
+    --border2: #21262d;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --text3: #6e7681;
+    --accent: #1f6feb;
+    --accent2: #388bfd;
+    --accent3: #0d419d;
+    --green: #3fb950;
+    --green2: #238636;
+    --red: #f85149;
+    --orange: #d29922;
+    --orange2: #e3b341;
+    --purple: #8957e5;
+    --cyan: #39d353;
+    --radius: 8px;
+    --radius2: 12px;
+    --shadow: 0 1px 3px rgba(0,0,0,.4), 0 4px 12px rgba(0,0,0,.3);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ──────────────────────────────────────────────── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .logo span { color: var(--accent2); }
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .usd-badge {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .usd-badge .label { color: var(--text2); font-size: 11px; font-family: 'Inter', sans-serif; }
+  .usd-badge .rate { color: var(--orange2); font-weight: 600; }
+  .usd-badge .dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .usd-badge .updated { color: var(--text3); font-size: 10px; font-family: 'Inter', sans-serif; }
+
+  /* ── LAYOUT ──────────────────────────────────────────────── */
+  .container { max-width: 1360px; margin: 0 auto; padding: 24px; }
+
+  .page-title {
+    font-size: 22px; font-weight: 700;
+    margin-bottom: 4px;
+    background: linear-gradient(90deg, #e6edf3, #8b949e);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .page-subtitle { color: var(--text2); font-size: 13px; margin-bottom: 28px; }
+
+  /* ── CARDS / SECTIONS ────────────────────────────────────── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius2);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 13px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--text2);
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-title .icon { font-size: 14px; }
+
+  /* ── GRID HELPERS ────────────────────────────────────────── */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
+
+  @media(max-width:900px) {
+    .grid3,.grid4 { grid-template-columns: 1fr 1fr; }
+  }
+  @media(max-width:600px) {
+    .grid2,.grid3,.grid4 { grid-template-columns: 1fr; }
+  }
+
+  /* ── FIELD GROUP ─────────────────────────────────────────── */
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label {
+    font-size: 11px; font-weight: 500;
+    color: var(--text2); text-transform: uppercase; letter-spacing: .05em;
+  }
+  .field-hint { font-size: 10px; color: var(--text3); margin-top: 2px; }
+  .type-tag {
+    display: inline-block;
+    padding: 1px 6px; border-radius: 4px;
+    font-size: 10px; font-weight: 600;
+    margin-left: 4px;
+  }
+  .tag-20 { background: rgba(57,211,83,.15); color: var(--cyan); }
+  .tag-40 { background: rgba(56,139,253,.15); color: var(--accent2); }
+
+  input[type="number"] {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    font-size: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    width: 100%;
+    transition: border-color .2s, box-shadow .2s;
+    appearance: textfield;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+  input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent2);
+    box-shadow: 0 0 0 3px rgba(56,139,253,.15);
+  }
+
+  /* sub-label row */
+  .sub-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  .sub-field { display: flex; flex-direction: column; gap: 4px; }
+  .sub-field label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .04em; }
+
+  /* ── DIVIDERS ────────────────────────────────────────────── */
+  .divider { border: none; border-top: 1px solid var(--border2); margin: 18px 0; }
+
+  /* ── BUTTON ──────────────────────────────────────────────── */
+  .btn-row { display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 22px; border-radius: var(--radius);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    border: none; transition: all .2s;
+    font-family: 'Inter', sans-serif;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(31,111,235,.3);
+  }
+  .btn-primary:hover { background: var(--accent2); box-shadow: 0 0 18px rgba(56,139,253,.4); }
+  .btn-success {
+    background: var(--green2);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(63,185,80,.2);
+  }
+  .btn-success:hover { background: #2ea043; }
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text2);
+  }
+  .btn-outline:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* ── RESULTS SECTION ─────────────────────────────────────── */
+  #results { display: none; margin-top: 32px; }
+  #results.visible { display: block; animation: fadeIn .4s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+
+  .result-section { margin-bottom: 28px; }
+  .result-section h3 {
+    font-size: 15px; font-weight: 700; margin-bottom: 14px;
+    color: var(--text);
+    border-left: 3px solid var(--accent2);
+    padding-left: 10px;
+  }
+
+  /* ── STAT CHIPS ──────────────────────────────────────────── */
+  .stats-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .stat-chip {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    min-width: 140px;
+  }
+  .stat-chip .s-label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; }
+  .stat-chip .s-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px; font-weight: 700; margin-top: 2px;
+  }
+  .stat-chip .s-sub { font-size: 10px; color: var(--text3); }
+  .c-blue { color: var(--accent2); }
+  .c-green { color: var(--green); }
+  .c-orange { color: var(--orange2); }
+  .c-red { color: var(--red); }
+  .c-purple { color: var(--purple); }
+  .c-cyan { color: var(--cyan); }
+
+  /* ── TABLE ───────────────────────────────────────────────── */
+  .tbl-wrap { overflow-x: auto; border-radius: var(--radius2); border: 1px solid var(--border); }
+  table {
+    width: 100%; border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    background: var(--bg3);
+    color: var(--text2); font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em;
+    padding: 10px 14px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr { border-bottom: 1px solid var(--border2); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,.025); }
+  tbody tr.total-row { background: rgba(31,111,235,.08); border-top: 1px solid var(--border); }
+  tbody tr.total-row td { font-weight: 700; }
+  td {
+    padding: 9px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+  }
+  td.text-cell { font-family: 'Inter', sans-serif; font-weight: 500; }
+  td.pos { color: var(--green); }
+  td.neg { color: var(--red); }
+  td.neutral { color: var(--orange2); }
+  td.highlight { color: var(--accent2); font-weight: 600; }
+  .badge-cw { color: var(--orange2); }
+  .badge-new { color: var(--cyan); }
+  .badge-ml { color: var(--purple); }
+
+  /* ── YEAR TABS ───────────────────────────────────────────── */
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tab {
+    padding: 6px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 12px; font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    transition: all .2s;
+  }
+  .tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .tab:hover:not(.active) { border-color: var(--accent2); color: var(--accent2); }
+  .year-panel { display: none; }
+  .year-panel.active { display: block; }
+
+  /* ── FORMULA BOX ─────────────────────────────────────────── */
+  .formula-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.8;
+    margin-bottom: 12px;
+  }
+  .formula-box .f-title { color: var(--text); font-weight: 600; font-family: 'Inter', sans-serif; font-size: 11px; margin-bottom: 6px; }
+  .formula-box .kw { color: var(--accent2); }
+  .formula-box .val { color: var(--orange2); }
+
+  /* info banner */
+  .info-banner {
+    background: rgba(31,111,235,.1);
+    border: 1px solid rgba(31,111,235,.3);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    font-size: 12px; color: var(--text2);
+    display: flex; align-items: flex-start; gap: 10px;
+    margin-bottom: 16px;
+  }
+  .info-banner .ib-icon { font-size: 15px; flex-shrink: 0; }
+
+  /* ── BUDGET SUMMARY ──────────────────────────────────────── */
+  .budget-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 16px; }
+  @media(max-width:700px){ .budget-grid { grid-template-columns: 1fr 1fr; } }
+  .budget-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius2);
+    padding: 16px 18px;
+  }
+  .budget-card .bc-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+  .budget-card .bc-usd { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 700; }
+  .budget-card .bc-rub { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text2); margin-top: 3px; }
+  .budget-card .bc-note { font-size: 10px; color: var(--text3); margin-top: 4px; }
+  .bc-buy { border-top: 2px solid var(--red); }
+  .bc-sell { border-top: 2px solid var(--green); }
+  .bc-net { border-top: 2px solid var(--accent2); }
+  .bc-ml { border-top: 2px solid var(--purple); }
+
+  /* ── FOOTER ──────────────────────────────────────────────── */
+  footer {
+    margin-top: 48px;
+    border-top: 1px solid var(--border2);
+    padding: 20px 24px;
+    text-align: center;
+    color: var(--text3);
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <img src="https://t-lc.ru/local/templates/tlc/images/logo-new.svg" alt="ТЛЦ" style="height:32px;width:auto;display:block;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+    <div class="logo-icon" style="display:none;">🚢</div>
+    <span>Container<span>Fleet</span> Planner</span>
+  </div>
+  <div class="header-right">
+    <div class="usd-badge">
+      <div class="dot"></div>
+      <div>
+        <div class="label">USD/RUB</div>
+        <div class="rate" id="usd-rate">—</div>
+        <div class="updated" id="usd-updated">загрузка...</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ── MAIN ────────────────────────────────────────────────────── -->
+<div class="container">
+  <div class="page-title">Планирование контейнерного парка</div>
+  <div class="page-subtitle">Расчёт потребного парка · план продаж CW · план закупки NEW · бюджет на 1–3 года</div>
+
+  <!-- ══ БЛОК 0: ТЕКУЩИЙ ПАРК ══ -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🚢</span>Текущий парк (начальные данные)</div>
+    <div class="grid2">
+      <div>
+        <div style="font-size:11px;color:var(--accent2);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">40HC</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="sub-field">
+            <label>NEW <span class="type-tag tag-40">шт</span></label>
+            <input type="number" id="f_hc_new" value="2754" min="0">
+          </div>
+          <div class="sub-field">
+            <label>CW <span class="type-tag tag-40">шт</span></label>
+            <input type="number" id="f_hc_cw" value="2776" min="0">
+          </div>
+          <div class="sub-field">
+            <label>ML <span class="type-tag tag-40">шт</span></label>
+            <input type="number" id="f_hc_ml" value="763" min="0">
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--cyan);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">20DC</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="sub-field">
+            <label>NEW <span class="type-tag tag-20">шт</span></label>
+            <input type="number" id="f_dc_new" value="870" min="0">
+          </div>
+          <div class="sub-field">
+            <label>CW <span class="type-tag tag-20">шт</span></label>
+            <input type="number" id="f_dc_cw" value="2049" min="0">
+          </div>
+          <div class="sub-field">
+            <label>ML <span class="type-tag tag-20">шт</span></label>
+            <input type="number" id="f_dc_ml" value="400" min="0">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ БЛОК 1: ПЛАН ПОГРУЗКИ ══ -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📦</span>Ежемесячный план перевозок (контейнеры)</div>
+    <div class="grid3">
+      <div>
+        <div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🛳 Импорт Китай → Россия</div>
+        <div class="sub-row">
+          <div class="sub-field"><label>40HC <span class="type-tag tag-40">шт/мес</span></label><input type="number" id="imp40" value="720" min="0"></div>
+          <div class="sub-field"><label>20DC <span class="type-tag tag-20">шт/мес</span></label><input type="number" id="imp20" value="360" min="0"></div>
+        </div>
+        <div class="field-hint" style="margin-top:6px;">Транзит: 84 дня</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🏭 Внутренний рынок РФ</div>
+        <div class="sub-row">
+          <div class="sub-field"><label>40HC <span class="type-tag tag-40">шт/мес</span></label><input type="number" id="dom40" value="980" min="0"></div>
+          <div class="sub-field"><label>20DC <span class="type-tag tag-20">шт/мес</span></label><input type="number" id="dom20" value="490" min="0"></div>
+        </div>
+        <div class="field-hint" style="margin-top:6px;">Транзит: 17 дней</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">✈️ Экспорт Россия → Китай</div>
+        <div class="sub-row">
+          <div class="sub-field"><label>40HC <span class="type-tag tag-40">шт/мес</span></label><input type="number" id="exp40" value="592" min="0"></div>
+          <div class="sub-field"><label>20DC <span class="type-tag tag-20">шт/мес</span></label><input type="number" id="exp20" value="296" min="0"></div>
+        </div>
+        <div class="field-hint" style="margin-top:6px;">Транзит: 71 день</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ БЛОК 2: ТРАНЗИТНЫЕ СРОКИ ══ -->
+  <div class="card">
+    <div class="card-title"><span class="icon">⏱</span>Транзитные сроки (дни)</div>
+    <div class="grid3">
+      <div class="field">
+        <label>Импорт (Китай→Россия)</label>
+        <input type="number" id="t_imp" value="84" min="1">
+      </div>
+      <div class="field">
+        <label>Внутренний рынок РФ</label>
+        <input type="number" id="t_dom" value="17" min="1">
+      </div>
+      <div class="field">
+        <label>Экспорт (Россия→Китай)</label>
+        <input type="number" id="t_exp" value="71" min="1">
+      </div>
+    </div>
+    <hr class="divider">
+    <div class="grid3">
+      <div class="field">
+        <label>Простой в ремонте (дни)</label>
+        <input type="number" id="t_repair" value="15" min="0">
+      </div>
+      <div class="field">
+        <label>Срок производства NEW (дни)</label>
+        <input type="number" id="t_mfg" value="40" min="1">
+      </div>
+      <div class="field">
+        <label>Ставка ML (USD/день)</label>
+        <div class="sub-row">
+          <div class="sub-field"><label>20DC</label><input type="number" id="ml_rate20" value="1" min="0" step="0.1"></div>
+          <div class="sub-field"><label>40HC</label><input type="number" id="ml_rate40" value="2" min="0" step="0.1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ БЛОК 3: ПАРТИИ ЗАКУПКИ ══ -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🏭</span>Параметры партий NEW (Китай)</div>
+    <div class="grid2">
+      <div>
+        <div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:8px;">Партия единовременного выпуска</div>
+        <div class="sub-row">
+          <div class="sub-field"><label>40HC <span class="type-tag tag-40">шт</span></label><input type="number" id="batch40" value="150" min="1"></div>
+          <div class="sub-field"><label>20DC <span class="type-tag tag-20">шт</span></label><input type="number" id="batch20" value="50" min="1"></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:8px;">Ежемесячная закупка CW (доп. потребность)</div>
+        <div class="sub-row">
+          <div class="sub-field"><label>40HC CW <span class="type-tag tag-40">шт/мес</span></label><input type="number" id="cw_month40" value="50" min="0"></div>
+          <div class="sub-field"><label>20DC CW <span class="type-tag tag-20">шт/мес</span></label><input type="number" id="cw_month20" value="50" min="0"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ БЛОК 4: ЦЕНЫ ══ -->
+  <div class="card">
+    <div class="card-title"><span class="icon">💰</span>Цены (USD)</div>
+    <div class="grid3">
+      <div>
+        <div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:8px;">Цена продажи CW в Китае</div>
+        <div class="sub-row">
+          <div class="sub-field"><label>40HC <span class="type-tag tag-40">USD</span></label><input type="number" id="sell40" value="1700" min="0"></div>
+          <div class="sub-field"><label>20DC <span class="type-tag tag-20">USD</span></label><input type="number" id="sell20" value="650" min="0"></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:8px;">Цена покупки NEW</div>
+        <div class="sub-row">
+          <div class="sub-field"><label>40HC <span class="type-tag tag-40">USD</span></label><input type="number" id="buy_new40" value="2850" min="0"></div>
+          <div class="sub-field"><label>20DC <span class="type-tag tag-20">USD</span></label><input type="number" id="buy_new20" value="1750" min="0"></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:8px;">Цена закупки CW</div>
+        <div class="sub-row">
+          <div class="sub-field"><label>40HC <span class="type-tag tag-40">USD</span></label><input type="number" id="buy_cw40" value="1250" min="0"></div>
+          <div class="sub-field"><label>20DC <span class="type-tag tag-20">USD</span></label><input type="number" id="buy_cw20" value="500" min="0"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ КНОПКИ ══ -->
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="calculate()">▶ Рассчитать план 1–3 года</button>
+    <button class="btn btn-outline" onclick="resetDefaults()">↺ Сбросить к базовым</button>
+  </div>
+
+  <!-- ══ РЕЗУЛЬТАТЫ ══ -->
+  <div id="results">
+
+    <!-- 1. ТЕКУЩИЙ ПАРК -->
+    <div class="result-section">
+      <h3>Текущий парк</h3>
+      <div class="stats-row" id="fleet-stats"></div>
+      <div class="tbl-wrap"><table id="fleet-table"></table></div>
+    </div>
+
+    <!-- 2. АНАЛИЗ МАРШРУТОВ -->
+    <div class="result-section">
+      <h3>Анализ маршрутов и оборот</h3>
+      <div class="stats-row" id="route-stats"></div>
+      <div class="tbl-wrap"><table id="route-table"></table></div>
+    </div>
+
+    <!-- 3. ПОТРЕБНЫЙ ПАРК -->
+    <div class="result-section">
+      <h3>Потребный парк (с учётом ремонта, производства и ML)</h3>
+      <div id="req-info-banner" class="info-banner"></div>
+      <div class="stats-row" id="req-stats"></div>
+      <div class="tbl-wrap"><table id="req-table"></table></div>
+    </div>
+
+    <!-- 4. СХЕМА РАСЧЁТА -->
+    <div class="result-section">
+      <h3>Схема расчёта: продажи CW → закупка NEW</h3>
+      <div id="formula-boxes"></div>
+    </div>
+
+    <!-- 5. ПЛАН ПРОДАЖ CW -->
+    <div class="result-section">
+      <h3>План продаж CW в Китае (по годам)</h3>
+      <div class="tabs" id="sell-tabs"></div>
+      <div id="sell-panels"></div>
+    </div>
+
+    <!-- 6. ПЛАН ЗАКУПКИ NEW -->
+    <div class="result-section">
+      <h3>План закупки NEW в Китае (по годам)</h3>
+      <div class="tabs" id="buy-tabs"></div>
+      <div id="buy-panels"></div>
+    </div>
+
+    <!-- 7. БЮДЖЕТ -->
+    <div class="result-section">
+      <h3>Сводный бюджет</h3>
+      <div class="tabs" id="budget-tabs"></div>
+      <div id="budget-panels"></div>
+    </div>
+
+    <!-- СКАЧАТЬ EXCEL -->
+    <div class="btn-row">
+      <button class="btn btn-success" onclick="exportExcel()">⬇ Скачать Excel (все таблицы)</button>
+    </div>
+
+  </div><!-- /results -->
+
+</div><!-- /container -->
+
+<footer>Container Fleet Planner &nbsp;·&nbsp; v1.0 &nbsp;·&nbsp; Данные носят расчётный характер</footer>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   USD RATE
+═══════════════════════════════════════════════════════ */
+let USD_RUB = 90;
+
+async function fetchUSD() {
+  const el = document.getElementById('usd-rate');
+  const elU = document.getElementById('usd-updated');
+  try {
+    const r = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json');
+    const d = await r.json();
+    if (d && d.usd && d.usd.rub) {
+      USD_RUB = parseFloat(d.usd.rub.toFixed(2));
+      el.textContent = USD_RUB.toFixed(2) + ' ₽';
+      elU.textContent = 'актуальный';
+      return;
+    }
+  } catch(e) {}
+  try {
+    const r2 = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+    const d2 = await r2.json();
+    if (d2.rates && d2.rates.RUB) {
+      USD_RUB = parseFloat(d2.rates.RUB.toFixed(2));
+      el.textContent = USD_RUB.toFixed(2) + ' ₽';
+      elU.textContent = 'актуальный';
+      return;
+    }
+  } catch(e) {}
+  el.textContent = USD_RUB.toFixed(2) + ' ₽';
+  elU.textContent = 'по умолч.';
+}
+fetchUSD();
+
+/* ═══════════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════════ */
+const v = id => parseFloat(document.getElementById(id).value) || 0;
+const fmt = n => Math.round(n).toLocaleString('ru');
+const fmtU = n => '$' + Math.round(n).toLocaleString('ru');
+const fmtR = n => '₽' + Math.round(n * USD_RUB).toLocaleString('ru');
+
+function makeTable(headers, rows, colClasses) {
+  const ths = headers.map(h => `<th>${h}</th>`).join('');
+  const trs = rows.map((row, ri) => {
+    const isTotal = ri === rows.length - 1;
+    const tds = row.map((c, i) => {
+      const cls = (colClasses && colClasses[i]) ? colClasses[i] : '';
+      return `<td class="${cls}${isTotal ? ' fw' : ''}">${c}</td>`;
+    }).join('');
+    return `<tr${isTotal ? ' class="total-row"' : ''}>${tds}</tr>`;
+  }).join('');
+  return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+// для вставки в существующий <table id="..."> — без обёртки
+function makeTableInner(headers, rows, colClasses) {
+  const ths = headers.map(h => `<th>${h}</th>`).join('');
+  const trs = rows.map((row, ri) => {
+    const isTotal = ri === rows.length - 1;
+    const tds = row.map((c, i) => {
+      const cls = (colClasses && colClasses[i]) ? colClasses[i] : '';
+      return `<td class="${cls}${isTotal ? ' fw' : ''}">${c}</td>`;
+    }).join('');
+    return `<tr${isTotal ? ' class="total-row"' : ''}>${tds}</tr>`;
+  }).join('');
+  return `<thead><tr>${ths}</tr></thead><tbody>${trs}</tbody>`;
+}
+
+function chip(label, val, cls, sub) {
+  return `<div class="stat-chip">
+    <div class="s-label">${label}</div>
+    <div class="s-val ${cls}">${val}</div>
+    ${sub ? `<div class="s-sub">${sub}</div>` : ''}
+  </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════
+   RESET
+═══════════════════════════════════════════════════════ */
+function resetDefaults() {
+  const def = {
+    f_hc_new:2754, f_hc_cw:2776, f_hc_ml:763,
+    f_dc_new:870,  f_dc_cw:2049, f_dc_ml:400,
+    imp40:720,imp20:360,dom40:980,dom20:490,exp40:592,exp20:296,
+    t_imp:84,t_dom:17,t_exp:71,t_repair:15,t_mfg:40,ml_rate20:1,ml_rate40:2,
+    batch40:150,batch20:50,cw_month40:50,cw_month20:50,
+    sell40:1700,sell20:650,buy_new40:2850,buy_new20:1750,buy_cw40:1250,buy_cw20:500
+  };
+  Object.entries(def).forEach(([k,val]) => { const el = document.getElementById(k); if(el) el.value = val; });
+  document.getElementById('results').classList.remove('visible');
+}
+
+/* ═══════════════════════════════════════════════════════
+   CALCULATE
+═══════════════════════════════════════════════════════ */
+// store for Excel
+let EXPORT_DATA = {};
+
+function calculate() {
+  // ─── inputs ───
+  const imp40=v('imp40'), imp20=v('imp20');
+  const dom40=v('dom40'), dom20=v('dom20');
+  const exp40=v('exp40'), exp20=v('exp20');
+  const T_IMP=v('t_imp'), T_DOM=v('t_dom'), T_EXP=v('t_exp');
+  const T_REP=v('t_repair'), T_MFG=v('t_mfg');
+  const ML20=v('ml_rate20'), ML40=v('ml_rate40');
+  const BATCH40=v('batch40'), BATCH20=v('batch20');
+  const CW_M40=v('cw_month40'), CW_M20=v('cw_month20');
+  const SELL40=v('sell40'), SELL20=v('sell20');
+  const BUY_NEW40=v('buy_new40'), BUY_NEW20=v('buy_new20');
+  const BUY_CW40=v('buy_cw40'), BUY_CW20=v('buy_cw20');
+
+  const DAYS=30.5;
+
+  // ─── 1. Текущий парк (из полей ввода) ───
+  const fleet = {
+    '40HC NEW': v('f_hc_new'), '40HC CW': v('f_hc_cw'), '40HC ML': v('f_hc_ml'),
+    '20DC NEW': v('f_dc_new'), '20DC CW': v('f_dc_cw'), '20DC ML': v('f_dc_ml')
+  };
+  const total40 = fleet['40HC NEW']+fleet['40HC CW']+fleet['40HC ML'];
+  const total20 = fleet['20DC NEW']+fleet['20DC CW']+fleet['20DC ML'];
+  const totalAll = total40+total20;
+
+  // ─── 2. Анализ маршрутов ───
+  // Оборотный парк на плече = объём_мес × (транзит + ремонт) / 30.5
+  const inTransit40_imp = Math.ceil(imp40 * (T_IMP + T_REP) / DAYS);
+  const inTransit40_dom = Math.ceil(dom40 * (T_DOM + T_REP) / DAYS);
+  const inTransit40_exp = Math.ceil(exp40 * (T_EXP + T_REP) / DAYS);
+  const inTransit20_imp = Math.ceil(imp20 * (T_IMP + T_REP) / DAYS);
+  const inTransit20_dom = Math.ceil(dom20 * (T_DOM + T_REP) / DAYS);
+  const inTransit20_exp = Math.ceil(exp20 * (T_EXP + T_REP) / DAYS);
+
+  // Чистый ремонтный резерв (для отображения)
+  const inRepair40 = Math.ceil((imp40+dom40+exp40)*T_REP/DAYS);
+  const inRepair20 = Math.ceil((imp20+dom20+exp20)*T_REP/DAYS);
+
+  // Рабочий парк = сумма по плечам (уже включает ремонт)
+  const workFleet40 = inTransit40_imp + inTransit40_dom + inTransit40_exp;
+  const workFleet20 = inTransit20_imp + inTransit20_dom + inTransit20_exp;
+  // псевдоним для совместимости с блоком статистики
+  const inUse40 = workFleet40;
+  const inUse20 = workFleet20;
+
+  // ─── 3. Потребный парк ───
+  // Производственный буфер: пока идёт изготовление NEW (T_MFG дней),
+  // нужен дополнительный резерв = ежемесячный оборот × T_MFG / 30.5
+  const mfgBuffer40 = Math.ceil((imp40+dom40+exp40)*T_MFG/DAYS);
+  const mfgBuffer20 = Math.ceil((imp20+dom20+exp20)*T_MFG/DAYS);
+
+  // Собственный потребный = рабочий парк + буфер производства
+  const ownRequired40 = workFleet40 + mfgBuffer40;
+  const ownRequired20 = workFleet20 + mfgBuffer20;
+
+  // ML = 30% от собственного потребного
+  const ml_needed40 = Math.ceil(ownRequired40 * 0.30);
+  const ml_needed20 = Math.ceil(ownRequired20 * 0.30);
+
+  const totalRequired40 = ownRequired40 + ml_needed40;
+  const totalRequired20 = ownRequired20 + ml_needed20;
+
+  // разница текущий vs потребный
+  const gap40 = totalRequired40 - total40;
+  const gap20 = totalRequired20 - total20;
+
+  // ─── 4. Схема расчёта (начальные показатели) ───
+  // Максимальный объём продаж CW при полной загрузке экспорта CW:
+  // EXP × 1.0 × 80% — верхний предел, пока есть запас CW
+  const maxSellCW40_pm = Math.round(exp40 * 0.80); // 592 × 0.8 = 473-474
+  const maxSellCW20_pm = Math.round(exp20 * 0.80); // 296 × 0.8 = 237
+
+  // Макс. возврат ML если всё ML отправляется экспортом (для формульного блока)
+  const maxRetML40_pm = Math.round(exp40 * 0.50);
+  const maxRetML20_pm = Math.round(exp20 * 0.50);
+
+  // ─── 5/6/7. Помесячные планы (36 месяцев) ───
+  // Логика экспортного потока (по DeepSeek):
+  //   1. Приоритет в экспорт: сначала CW (→ продажа 80%), затем ML (→ возврат 50%), затем NEW
+  //   2. CW_share = min(1, parkCW / exp) ограничен наличием
+  //   3. ML_share = min(1 − CW_share, parkML / exp)
+  //   4. Продажа CW = exp × CW_share × 0.80
+  //   5. Возврат ML = exp × ML_share × 0.50
+  //   6. Потребность в NEW = продажа CW + возврат ML (замещение выбытия)
+  //   7. Закупка NEW кратно партиям (150 / 50), только при реальном дефиците
+
+  const MONTHS = 36;
+  let parkCW40 = fleet['40HC CW'], parkCW20 = fleet['20DC CW'];
+  let parkNEW40 = fleet['40HC NEW'], parkNEW20 = fleet['20DC NEW'];
+  let parkML40 = fleet['40HC ML'], parkML20 = fleet['20DC ML'];
+
+  const yearlyPlan = [[], [], []]; // 3 года по 12 месяцев
+
+  for(let m=1; m<=MONTHS; m++) {
+    const yr = Math.floor((m-1)/12);
+
+    // ── Формирование экспортного потока ──────────────────────
+    // 40HC
+    const cwShare40 = Math.min(1, parkCW40 / Math.max(1, exp40));
+    const mlShare40 = Math.min(1 - cwShare40, parkML40 / Math.max(1, exp40));
+    const newShare40 = Math.max(0, 1 - cwShare40 - mlShare40);
+
+    // 20DC
+    const cwShare20 = Math.min(1, parkCW20 / Math.max(1, exp20));
+    const mlShare20 = Math.min(1 - cwShare20, parkML20 / Math.max(1, exp20));
+    const newShare20 = Math.max(0, 1 - cwShare20 - mlShare20);
+
+    // Контейнеры пришедшие в Китай по типам
+    const toCN40_cw  = Math.round(exp40 * cwShare40);
+    const toCN40_ml  = Math.round(exp40 * mlShare40);
+    const toCN40_new = Math.round(exp40 * newShare40);
+    const toCN20_cw  = Math.round(exp20 * cwShare20);
+    const toCN20_ml  = Math.round(exp20 * mlShare20);
+    const toCN20_new = Math.round(exp20 * newShare20);
+
+    // ── Продажи CW (80%) и возврат ML (50%) ──────────────────
+    const sellCW40 = Math.round(toCN40_cw * 0.80);
+    const sellCW20 = Math.round(toCN20_cw * 0.80);
+    const retML40  = Math.round(toCN40_ml * 0.50);
+    const retML20  = Math.round(toCN20_ml * 0.50);
+
+    // ── Закупка CW (ежемесячный минимум) ─────────────────────
+    const buyCW40 = CW_M40;
+    const buyCW20 = CW_M20;
+
+    // ── Потребность в NEW = проданные CW + возвращённые ML ────
+    const needNEW40 = sellCW40 + retML40;
+    const needNEW20 = sellCW20 + retML20;
+
+    // Закупаем кратно партиям, только при реальной потребности
+    const buyNEW40 = needNEW40 > 0 ? Math.ceil(needNEW40 / BATCH40) * BATCH40 : 0;
+    const buyNEW20 = needNEW20 > 0 ? Math.ceil(needNEW20 / BATCH20) * BATCH20 : 0;
+
+    // ── ML аренда (30% от потребного собственного) ────────────
+    // Текущий собственный парк после операций текущего месяца
+    const ownPark40_after = (parkCW40 - sellCW40 + buyCW40) + (parkNEW40 + buyNEW40);
+    const ownPark20_after = (parkCW20 - sellCW20 + buyCW20) + (parkNEW20 + buyNEW20);
+    // ML нужен если собственный < ownRequired; но ограничен 30% от потребного
+    const mlNeed40 = Math.min(ml_needed40, Math.max(0, ownRequired40 - ownPark40_after));
+    const mlNeed20 = Math.min(ml_needed20, Math.max(0, ownRequired20 - ownPark20_after));
+
+    // ── Стоимости ─────────────────────────────────────────────
+    const costNEW40 = buyNEW40 * BUY_NEW40;
+    const costNEW20 = buyNEW20 * BUY_NEW20;
+    const costCW40  = buyCW40  * BUY_CW40;
+    const costCW20  = buyCW20  * BUY_CW20;
+    const revSell40 = sellCW40 * SELL40;
+    const revSell20 = sellCW20 * SELL20;
+    const mlCost40  = mlNeed40 * ML40 * DAYS;
+    const mlCost20  = mlNeed20 * ML20 * DAYS;
+
+    const netBudget = (costNEW40+costNEW20+costCW40+costCW20+mlCost40+mlCost20) - (revSell40+revSell20);
+
+    // ── Обновляем парк ────────────────────────────────────────
+    parkCW40  = Math.max(0, parkCW40  - sellCW40  + buyCW40);
+    parkCW20  = Math.max(0, parkCW20  - sellCW20  + buyCW20);
+    parkNEW40 = parkNEW40 + buyNEW40;
+    parkNEW20 = parkNEW20 + buyNEW20;
+    parkML40  = Math.max(0, parkML40  - retML40);   // возвращённые убываем
+    parkML20  = Math.max(0, parkML20  - retML20);
+
+    yearlyPlan[yr].push({
+      m, yr: yr+1,
+      // состав экспортного потока
+      toCN40_cw, toCN40_ml, toCN40_new,
+      toCN20_cw, toCN20_ml, toCN20_new,
+      // операции
+      sellCW40, sellCW20,
+      retML40, retML20,
+      buyCW40, buyCW20,
+      buyNEW40, buyNEW20,
+      // финансы
+      costNEW40: Math.round(costNEW40), costNEW20: Math.round(costNEW20),
+      costCW40: Math.round(costCW40), costCW20: Math.round(costCW20),
+      revSell40: Math.round(revSell40), revSell20: Math.round(revSell20),
+      mlCost40: Math.round(mlCost40), mlCost20: Math.round(mlCost20),
+      netBudget: Math.round(netBudget),
+      mlNeed40: Math.round(mlNeed40), mlNeed20: Math.round(mlNeed20),
+      // состояние парка в конце месяца
+      parkCW40: Math.round(parkCW40), parkCW20: Math.round(parkCW20),
+      parkNEW40: Math.round(parkNEW40), parkNEW20: Math.round(parkNEW20),
+      parkML40: Math.round(parkML40), parkML20: Math.round(parkML20)
+    });
+  }
+
+  // ════ RENDER ════════════════════════════════════════════════
+  document.getElementById('results').classList.add('visible');
+
+  // ─── 1. Текущий парк ───
+  document.getElementById('fleet-stats').innerHTML =
+    chip('40HC всего', fmt(total40), 'c-blue', 'ед.') +
+    chip('20DC всего', fmt(total20), 'c-cyan', 'ед.') +
+    chip('Всего единиц', fmt(totalAll), 'c-orange', 'ед.') +
+    chip('TEU итого', fmt(total40*2+total20), 'c-green', 'TEU');
+
+  document.getElementById('fleet-table').innerHTML = makeTableInner(
+    ['Тип', 'Вид', 'Кол-во', 'Доля в типе', 'Примечание'],
+    [
+      ['40HC','NEW', fmt(fleet['40HC NEW']), Math.round(fleet['40HC NEW']/total40*100)+'%', '< 5 лет, собственные; в экспорт в последнюю очередь'],
+      ['40HC','CW',  fmt(fleet['40HC CW']),  Math.round(fleet['40HC CW']/total40*100)+'%', '> 10 лет, закупка; приоритет в экспорт → 80% продаётся'],
+      ['40HC','ML',  fmt(fleet['40HC ML']),  Math.round(fleet['40HC ML']/total40*100)+'%', 'Долгосрочная аренда; 50% возврат собственнику из Китая'],
+      ['20DC','NEW', fmt(fleet['20DC NEW']), Math.round(fleet['20DC NEW']/total20*100)+'%', '< 5 лет, собственные; в экспорт в последнюю очередь'],
+      ['20DC','CW',  fmt(fleet['20DC CW']),  Math.round(fleet['20DC CW']/total20*100)+'%', '> 10 лет, закупка; приоритет в экспорт → 80% продаётся'],
+      ['20DC','ML',  fmt(fleet['20DC ML']),  Math.round(fleet['20DC ML']/total20*100)+'%', 'Долгосрочная аренда; 50% возврат собственнику из Китая'],
+    ],
+    ['text-cell','text-cell badge-cw','highlight','','text-cell']
+  );
+
+  // ─── 2. Маршруты ───
+  document.getElementById('route-stats').innerHTML =
+    chip('Парк Импорт 40HC', fmt(inTransit40_imp), 'c-blue', 'ед. одновременно') +
+    chip('Парк Импорт 20DC', fmt(inTransit20_imp), 'c-cyan', 'ед. одновременно') +
+    chip('Парк Внутр. 40HC', fmt(inTransit40_dom), 'c-blue', 'ед. одновременно') +
+    chip('Парк Экспорт 40HC', fmt(inTransit40_exp), 'c-orange', 'ед. одновременно') +
+    chip('В ремонте 40HC', fmt(inRepair40), 'c-orange', 'ед./мес (включено)') +
+    chip('В ремонте 20DC', fmt(inRepair20), 'c-orange', 'ед./мес (включено)');
+
+  document.getElementById('route-table').innerHTML = makeTableInner(
+    ['Маршрут', 'Объём 40HC/мес', 'Объём 20DC/мес', 'Транзит (дн)', 'Ремонт (дн)', 'Итого дней', 'Парк 40HC', 'Парк 20DC'],
+    [
+      ['Импорт Китай→РФ', fmt(imp40), fmt(imp20), T_IMP, T_REP, T_IMP+T_REP,
+       fmt(inTransit40_imp), fmt(inTransit20_imp)],
+      ['Внутренний РФ',   fmt(dom40), fmt(dom20), T_DOM, T_REP, T_DOM+T_REP,
+       fmt(inTransit40_dom), fmt(inTransit20_dom)],
+      ['Экспорт РФ→Китай', fmt(exp40), fmt(exp20), T_EXP, T_REP, T_EXP+T_REP,
+       fmt(inTransit40_exp), fmt(inTransit20_exp)],
+      ['ИТОГО', fmt(imp40+dom40+exp40), fmt(imp20+dom20+exp20), '—', '—', '—',
+       fmt(workFleet40), fmt(workFleet20)],
+    ],
+    ['text-cell','','','','','','highlight','highlight']
+  );
+
+  // ─── 3. Потребный парк ───
+  const mlCostYear40 = ml_needed40 * ML40 * 365;
+  const mlCostYear20 = ml_needed20 * ML20 * 365;
+
+  document.getElementById('req-info-banner').innerHTML =
+    `<span class="ib-icon">ℹ️</span>
+     <span>Потребный парк по плечам = объём_мес × (транзит + ремонт) / 30,5 дней.
+     Производственный буфер: запас на ${T_MFG} дней изготовления NEW.
+     ML-аренда покрывает до 30% потребного (${ML40} USD/день за 40HC, ${ML20} USD/день за 20DC).
+     Экспорт: приоритет CW → ML → NEW.</span>`;
+
+  document.getElementById('req-stats').innerHTML =
+    chip('Рабочий парк 40HC', fmt(workFleet40), 'c-blue', 'по плечам + ремонт') +
+    chip('Рабочий парк 20DC', fmt(workFleet20), 'c-cyan', 'по плечам + ремонт') +
+    chip('Потребный 40HC (с ML)', fmt(totalRequired40), 'c-blue', 'ед.') +
+    chip('Потребный 20DC (с ML)', fmt(totalRequired20), 'c-cyan', 'ед.') +
+    chip('Дефицит/Профицит 40HC', (gap40>0?'+':'')+fmt(gap40), gap40>0?'c-red':'c-green', gap40>0?'нужна докупка':'профицит') +
+    chip('Дефицит/Профицит 20DC', (gap20>0?'+':'')+fmt(gap20), gap20>0?'c-red':'c-green', gap20>0?'нужна докупка':'профицит') +
+    chip('ML 40HC (нужно)', fmt(ml_needed40), 'c-purple', fmtU(mlCostYear40)+'/год') +
+    chip('ML 20DC (нужно)', fmt(ml_needed20), 'c-purple', fmtU(mlCostYear20)+'/год');
+
+  document.getElementById('req-table').innerHTML = makeTableInner(
+    ['Параметр', '40HC', '20DC'],
+    [
+      ['Парк на импорте ('+T_IMP+'+'+T_REP+' дн)', fmt(inTransit40_imp), fmt(inTransit20_imp)],
+      ['Парк на внутр. рынке ('+T_DOM+'+'+T_REP+' дн)', fmt(inTransit40_dom), fmt(inTransit20_dom)],
+      ['Парк на экспорте ('+T_EXP+'+'+T_REP+' дн)', fmt(inTransit40_exp), fmt(inTransit20_exp)],
+      ['ИТОГО рабочий парк (сумма плеч)', fmt(workFleet40), fmt(workFleet20)],
+      ['Производственный буфер ('+T_MFG+' дн)', fmt(mfgBuffer40), fmt(mfgBuffer20)],
+      ['ИТОГО собственный потребный', fmt(ownRequired40), fmt(ownRequired20)],
+      ['ML (30% от собственного потребного)', fmt(ml_needed40), fmt(ml_needed20)],
+      ['ИТОГО потребный (с ML)', fmt(totalRequired40), fmt(totalRequired20)],
+      ['Текущий парк (факт)', fmt(total40), fmt(total20)],
+      ['ДЕФИЦИТ (+) / ПРОФИЦИТ (−)', (gap40>0?'+':'')+fmt(gap40), (gap20>0?'+':'')+fmt(gap20)],
+    ],
+    ['text-cell','highlight','highlight']
+  );
+
+  // ─── 4. Схема расчёта ───
+  document.getElementById('formula-boxes').innerHTML = `
+    <div class="formula-box">
+      <div class="f-title">ПРИНЦИП РАСЧЁТА ПОТРЕБНОГО ПАРКА (по плечам)</div>
+      Плечо = Объём_мес × (Транзит + Ремонт) / 30,5<br>
+      Итого рабочий парк = Σ плеч | Производственный буфер = Оборот_мес × ${T_MFG} / 30,5<br>
+      Собственный потребный = Рабочий + Буфер&nbsp;&nbsp;|&nbsp;&nbsp;ML (30%) = Собственный × 0,30
+    </div>
+    <div class="formula-box">
+      <div class="f-title">ПРИОРИТЕТ ЭКСПОРТНОГО ПОТОКА → КИТАЙ</div>
+      1. CW отправляются первыми (пока есть запас): CW_share = min(1; запас_CW / EXP)<br>
+      2. ML заполняют остаток: ML_share = min(1 − CW_share; запас_ML / EXP)<br>
+      3. NEW добавляются при нехватке CW+ML: NEW_share = 1 − CW_share − ML_share<br>
+      Максимум продаж CW (при полном запасе): 40HC = <span class="val">${exp40}</span>×80% = <span class="kw">${maxSellCW40_pm} шт/мес</span> | 20DC = <span class="val">${exp20}</span>×80% = <span class="kw">${maxSellCW20_pm} шт/мес</span>
+    </div>
+    <div class="formula-box">
+      <div class="f-title">ПРОДАЖИ CW В КИТАЕ (80% от пришедших CW)</div>
+      SALE_CW = EXP × CW_share × 0,80<br>
+      Макс. выручка/мес: 40HC = ${maxSellCW40_pm} × $${SELL40} = <span class="kw">${fmtU(maxSellCW40_pm*SELL40)}</span> | 20DC = ${maxSellCW20_pm} × $${SELL20} = <span class="kw">${fmtU(maxSellCW20_pm*SELL20)}</span>
+    </div>
+    <div class="formula-box">
+      <div class="f-title">ВОЗВРАТ ML СОБСТВЕННИКАМ (50% от пришедших ML)</div>
+      RETURN_ML = EXP × ML_share × 0,50 — убывает из парка ML<br>
+      Макс. возврат/мес: 40HC = <span class="val">${maxRetML40_pm}</span> шт | 20DC = <span class="val">${maxRetML20_pm}</span> шт
+    </div>
+    <div class="formula-box">
+      <div class="f-title">ЗАКУПКА NEW (компенсация выбытия CW + ML)</div>
+      NEED_NEW = SALE_CW + RETURN_ML<br>
+      BUY_NEW = ⌈ NEED_NEW / Партия ⌉ × Партия (40HC: <span class="val">${BATCH40}</span> шт, 20DC: <span class="val">${BATCH20}</span> шт)<br>
+      Срок производства <span class="val">${T_MFG}</span> дн → буфер учтён в потребном парке
+    </div>
+    <div class="formula-box">
+      <div class="f-title">ЧИСТЫЙ БЮДЖЕТ МЕСЯЦА</div>
+      Затраты: NEW закупка + CW закупка (мин. ${CW_M40}×40HC + ${CW_M20}×20DC) + ML аренда<br>
+      Доход: Выручка от продаж CW<br>
+      Чистый расход = Затраты − Доход
+    </div>`;
+
+  // ─── 5/6/7. По годам ─── ES5 IIFE, без замыкания на let/yr
+  function renderYearTabs(containerId, panelId, renderFn) {
+    var tabs = document.getElementById(containerId);
+    var panels = document.getElementById(panelId);
+    tabs.innerHTML = '';
+    panels.innerHTML = '';
+    for(var yi=0; yi<3; yi++) {
+      (function(yr) {
+        var tabEl = document.createElement('button');
+        tabEl.className = 'tab' + (yr===0 ? ' active' : '');
+        tabEl.textContent = (yr+1)+'-й год (мес '+(yr*12+1)+'–'+(yr*12+12)+')';
+        tabEl.onclick = function() {
+          var allTabs = tabs.querySelectorAll('.tab');
+          for(var t=0; t<allTabs.length; t++) allTabs[t].className = 'tab';
+          tabEl.className = 'tab active';
+          var allPanels = panels.querySelectorAll('.year-panel');
+          for(var p=0; p<allPanels.length; p++) allPanels[p].className = 'year-panel';
+          document.getElementById(panelId+'_'+yr).className = 'year-panel active';
+        };
+        tabs.appendChild(tabEl);
+
+        var panelEl = document.createElement('div');
+        panelEl.className = 'year-panel' + (yr===0 ? ' active' : '');
+        panelEl.id = panelId+'_'+yr;
+        panelEl.innerHTML = renderFn(yearlyPlan[yr], yr);
+        panels.appendChild(panelEl);
+      })(yi);
+    }
+  }
+
+  // продажи CW
+  renderYearTabs('sell-tabs','sell-panels', (months, yr) => {
+    const rows = months.map(mo => {
+      const mon = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][(mo.m-1)%12];
+      return [mon,
+        // 40HC
+        fmt(mo.toCN40_cw), fmt(mo.toCN40_ml), fmt(mo.toCN40_new),
+        fmt(mo.sellCW40), fmt(mo.retML40), fmtU(mo.revSell40),
+        // 20DC
+        fmt(mo.toCN20_cw), fmt(mo.sellCW20), fmt(mo.retML20), fmtU(mo.revSell20),
+        // итого
+        fmtU(mo.revSell40+mo.revSell20),
+        // парк CW остаток
+        fmt(mo.parkCW40), fmt(mo.parkCW20)
+      ];
+    });
+    const sumRev40=months.reduce((s,x)=>s+x.revSell40,0);
+    const sumRev20=months.reduce((s,x)=>s+x.revSell20,0);
+    const sumQ40=months.reduce((s,x)=>s+x.sellCW40,0);
+    const sumQ20=months.reduce((s,x)=>s+x.sellCW20,0);
+    const sumRet40=months.reduce((s,x)=>s+x.retML40,0);
+    const sumRet20=months.reduce((s,x)=>s+x.retML20,0);
+    const lastMo=months[months.length-1];
+    rows.push(['ИТОГО','—','—','—',
+      fmt(sumQ40),fmt(sumRet40),fmtU(sumRev40),
+      '—',fmt(sumQ20),fmt(sumRet20),fmtU(sumRev20),
+      fmtU(sumRev40+sumRev20),
+      fmt(lastMo.parkCW40),fmt(lastMo.parkCW20)]);
+    return `<div class="tbl-wrap">`+
+      makeTable(
+        ['Месяц',
+         '40HC→КНР CW','40HC→КНР ML','40HC→КНР NEW',
+         'Продано CW40','Возврат ML40','Выручка 40HC',
+         '20DC→КНР CW','Продано CW20','Возврат ML20','Выручка 20DC',
+         'Итого выручка','Остаток CW40','Остаток CW20'],
+        rows,
+        ['text-cell','badge-cw','badge-ml','badge-new',
+         'badge-cw','badge-ml','pos',
+         'badge-cw','badge-cw','badge-ml','pos',
+         'pos','neutral','neutral']
+      )+`</div>`;
+  });
+
+  // закупка NEW
+  renderYearTabs('buy-tabs','buy-panels', (months, yr) => {
+    const rows = months.map(mo => {
+      const mon = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][(mo.m-1)%12];
+      const needNEW40 = mo.sellCW40 + mo.retML40;
+      const needNEW20 = mo.sellCW20 + mo.retML20;
+      return [mon,
+        fmt(needNEW40), fmt(mo.buyNEW40), fmtU(mo.costNEW40),
+        fmt(needNEW20), fmt(mo.buyNEW20), fmtU(mo.costNEW20),
+        fmt(mo.buyCW40), fmtU(mo.costCW40),
+        fmt(mo.buyCW20), fmtU(mo.costCW20),
+        fmtU(mo.costNEW40+mo.costNEW20+mo.costCW40+mo.costCW20),
+        fmt(mo.parkNEW40), fmt(mo.parkNEW20)
+      ];
+    });
+    const sN40=months.reduce((s,x)=>s+x.costNEW40,0);
+    const sN20=months.reduce((s,x)=>s+x.costNEW20,0);
+    const sC40=months.reduce((s,x)=>s+x.costCW40,0);
+    const sC20=months.reduce((s,x)=>s+x.costCW20,0);
+    const qN40=months.reduce((s,x)=>s+x.buyNEW40,0);
+    const qN20=months.reduce((s,x)=>s+x.buyNEW20,0);
+    const qC40=months.reduce((s,x)=>s+x.buyCW40,0);
+    const qC20=months.reduce((s,x)=>s+x.buyCW20,0);
+    const lastMo=months[months.length-1];
+    rows.push(['ИТОГО','—',fmt(qN40),fmtU(sN40),'—',fmt(qN20),fmtU(sN20),
+      fmt(qC40),fmtU(sC40),fmt(qC20),fmtU(sC20),
+      fmtU(sN40+sN20+sC40+sC20),fmt(lastMo.parkNEW40),fmt(lastMo.parkNEW20)]);
+    return `<div class="tbl-wrap">`+
+      makeTable(
+        ['Месяц',
+         'Потреб. NEW40','Заказ NEW40','Бюджет NEW40',
+         'Потреб. NEW20','Заказ NEW20','Бюджет NEW20',
+         'CW40 (мин)','Бюджет CW40',
+         'CW20 (мин)','Бюджет CW20',
+         'Итого затраты','Парк NEW40','Парк NEW20'],
+        rows,
+        ['text-cell',
+         'neutral','badge-new','neg',
+         'neutral','badge-new','neg',
+         'badge-cw','neg','badge-cw','neg',
+         'neg','highlight','highlight']
+      )+`</div>`;
+  });
+
+  // бюджет
+  renderYearTabs('budget-tabs','budget-panels', (months, yr) => {
+    const tNEW40=months.reduce((s,x)=>s+x.costNEW40,0);
+    const tNEW20=months.reduce((s,x)=>s+x.costNEW20,0);
+    const tCW40=months.reduce((s,x)=>s+x.costCW40,0);
+    const tCW20=months.reduce((s,x)=>s+x.costCW20,0);
+    const tSELL40=months.reduce((s,x)=>s+x.revSell40,0);
+    const tSELL20=months.reduce((s,x)=>s+x.revSell20,0);
+    const tML40=months.reduce((s,x)=>s+x.mlCost40,0);
+    const tML20=months.reduce((s,x)=>s+x.mlCost20,0);
+    const totalBuy = tNEW40+tNEW20+tCW40+tCW20+tML40+tML20;
+    const totalSell = tSELL40+tSELL20;
+    const net = totalBuy - totalSell;
+
+    const cards = `<div class="budget-grid">
+      <div class="budget-card bc-buy">
+        <div class="bc-label">Закупка NEW</div>
+        <div class="bc-usd c-red">${fmtU(tNEW40+tNEW20)}</div>
+        <div class="bc-rub">${fmtR(tNEW40+tNEW20)}</div>
+        <div class="bc-note">40HC: ${fmtU(tNEW40)} · 20DC: ${fmtU(tNEW20)}</div>
+      </div>
+      <div class="budget-card bc-buy">
+        <div class="bc-label">Закупка CW (ежемес. мин.)</div>
+        <div class="bc-usd c-orange">${fmtU(tCW40+tCW20)}</div>
+        <div class="bc-rub">${fmtR(tCW40+tCW20)}</div>
+        <div class="bc-note">40HC: ${fmtU(tCW40)} · 20DC: ${fmtU(tCW20)}</div>
+      </div>
+      <div class="budget-card bc-ml">
+        <div class="bc-label">Аренда ML (30% потребного)</div>
+        <div class="bc-usd c-purple">${fmtU(tML40+tML20)}</div>
+        <div class="bc-rub">${fmtR(tML40+tML20)}</div>
+        <div class="bc-note">40HC: ${fmtU(tML40)} · 20DC: ${fmtU(tML20)}</div>
+      </div>
+      <div class="budget-card bc-sell">
+        <div class="bc-label">Выручка продаж CW</div>
+        <div class="bc-usd c-green">+${fmtU(totalSell)}</div>
+        <div class="bc-rub">+${fmtR(totalSell)}</div>
+        <div class="bc-note">40HC: ${fmtU(tSELL40)} · 20DC: ${fmtU(tSELL20)}</div>
+      </div>
+      <div class="budget-card bc-buy">
+        <div class="bc-label">Итого затраты</div>
+        <div class="bc-usd c-red">${fmtU(totalBuy)}</div>
+        <div class="bc-rub">${fmtR(totalBuy)}</div>
+        <div class="bc-note">NEW + CW + ML</div>
+      </div>
+      <div class="budget-card bc-net">
+        <div class="bc-label">ЧИСТЫЙ БЮДЖЕТ</div>
+        <div class="bc-usd ${net>0?'c-red':'c-green'}">${net>0?'+':''}${fmtU(net)}</div>
+        <div class="bc-rub">${fmtR(net)}</div>
+        <div class="bc-note">Затраты − Выручка</div>
+      </div>
+    </div>`;
+
+    const rows = months.map(mo => {
+      const mon = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][(mo.m-1)%12];
+      const spend = mo.costNEW40+mo.costNEW20+mo.costCW40+mo.costCW20+mo.mlCost40+mo.mlCost20;
+      const rev = mo.revSell40+mo.revSell20;
+      return [mon,
+        fmtU(mo.costNEW40+mo.costNEW20), fmtU(mo.costCW40+mo.costCW20),
+        fmtU(mo.mlCost40+mo.mlCost20), fmtU(rev), fmtU(mo.netBudget),
+        `${mo.parkNEW40}/${mo.parkCW40}/${mo.parkML40}`,
+        `${mo.parkNEW20}/${mo.parkCW20}/${mo.parkML20}`];
+    });
+    rows.push(['ИТОГО', fmtU(tNEW40+tNEW20), fmtU(tCW40+tCW20), fmtU(tML40+tML20),
+               fmtU(totalSell), fmtU(net), '—', '—']);
+    return cards + `<div class="tbl-wrap">`+
+      makeTable(
+        ['Месяц','NEW закупка','CW закупка','ML аренда','Выручка CW','Чист. расход','Парк 40HC (N/C/M)','Парк 20DC (N/C/M)'],
+        rows,
+        ['text-cell','neg','neg','neutral','pos',net>0?'neg':'pos','c-blue','c-cyan']
+      )+`</div>`;
+  });
+
+  // ─── Сохраняем данные для Excel ───
+  EXPORT_DATA = {
+    fleet: fleet,
+    imp40:imp40, imp20:imp20, dom40:dom40, dom20:dom20, exp40:exp40, exp20:exp20,
+    T_IMP:T_IMP, T_DOM:T_DOM, T_EXP:T_EXP, T_REP:T_REP, T_MFG:T_MFG,
+    total40:total40, total20:total20, totalAll:totalAll,
+    inUse40:inUse40, inUse20:inUse20,
+    inRepair40: inRepair40, inRepair20: inRepair20,
+    workFleet40: workFleet40, workFleet20: workFleet20,
+    mfgBuffer40: mfgBuffer40, mfgBuffer20: mfgBuffer20,
+    ownRequired40: ownRequired40, ownRequired20: ownRequired20,
+    ml_needed40: ml_needed40, ml_needed20: ml_needed20,
+    totalRequired40: totalRequired40, totalRequired20: totalRequired20,
+    gap40:gap40, gap20:gap20,
+    maxSellCW40_pm: maxSellCW40_pm, maxSellCW20_pm: maxSellCW20_pm,
+    SELL40:SELL40, SELL20:SELL20,
+    BUY_NEW40:BUY_NEW40, BUY_NEW20:BUY_NEW20,
+    BUY_CW40:BUY_CW40, BUY_CW20:BUY_CW20,
+    BATCH40:BATCH40, BATCH20:BATCH20,
+    yearlyPlan: yearlyPlan
+  };
+
+  document.getElementById('results').scrollIntoView({behavior:'smooth'});
+}
+
+/* ═══════════════════════════════════════════════════════
+   EXCEL EXPORT
+═══════════════════════════════════════════════════════ */
+function exportExcel() {
+  if(!EXPORT_DATA.yearlyPlan) { alert('Сначала нажмите "Рассчитать"'); return; }
+  var d = EXPORT_DATA;
+  if(!window.XLSX) { exportCSV(d); return; }
+  var wb = XLSX.utils.book_new();
+
+  // ── Лист 1: Текущий парк
+  const fleetWS = XLSX.utils.aoa_to_sheet([
+    ['Тип','Вид','Количество','Доля в типе (%)','Примечание'],
+    ['40HC','NEW',d.fleet['40HC NEW'],Math.round(d.fleet['40HC NEW']/d.total40*100),'< 5 лет'],
+    ['40HC','CW', d.fleet['40HC CW'], Math.round(d.fleet['40HC CW']/d.total40*100),'> 10 лет, 80% продаж в Китае'],
+    ['40HC','ML', d.fleet['40HC ML'], Math.round(d.fleet['40HC ML']/d.total40*100),'Аренда, 50% возврат из Китая'],
+    ['20DC','NEW',d.fleet['20DC NEW'],Math.round(d.fleet['20DC NEW']/d.total20*100),'< 5 лет'],
+    ['20DC','CW', d.fleet['20DC CW'], Math.round(d.fleet['20DC CW']/d.total20*100),'> 10 лет'],
+    ['20DC','ML', d.fleet['20DC ML'], Math.round(d.fleet['20DC ML']/d.total20*100),'Аренда'],
+    [''],['Итого 40HC','',d.total40],['Итого 20DC','',d.total20],['ВСЕГО','',d.total40+d.total20],
+  ]);
+  XLSX.utils.book_append_sheet(wb, fleetWS, '1.Текущий парк');
+
+  // ── Лист 2: Потребный парк
+  const reqWS = XLSX.utils.aoa_to_sheet([
+    ['Параметр','40HC','20DC'],
+    ['В рейсах', d.inUse40-d.inRepair40, d.inUse20-d.inRepair20],
+    ['В ремонте', d.inRepair40, d.inRepair20],
+    ['Буфер производства', d.ownRequired40-(d.inUse40), d.ownRequired20-(d.inUse20)],
+    ['ИТОГО собственный потребный', d.ownRequired40, d.ownRequired20],
+    ['ML (30%)', d.ml_needed40, d.ml_needed20],
+    ['ИТОГО потребный с ML', d.totalRequired40, d.totalRequired20],
+    ['Текущий парк', d.total40, d.total20],
+    ['Дефицит/Профицит', d.gap40, d.gap20],
+  ]);
+  XLSX.utils.book_append_sheet(wb, reqWS, '2.Потребный парк');
+
+  // ── Листы 3-5: помесячно по годам
+  d.yearlyPlan.forEach((months, yi) => {
+    const header = [
+      'Месяц',
+      // экспортный поток 40HC
+      'Эксп.→КНР CW40','Эксп.→КНР ML40','Эксп.→КНР NEW40',
+      // операции 40HC
+      'Продажа CW40 (шт)','Возврат ML40 (шт)','Выручка CW40 (USD)',
+      // NEW 40HC
+      'Потреб.NEW40','Заказ NEW40 (шт)','Затр. NEW40 (USD)',
+      // CW 40HC мин
+      'CW40 мин (шт)','Затр.CW40 (USD)',
+      // экспортный поток 20DC
+      'Эксп.→КНР CW20','Продажа CW20 (шт)','Возврат ML20 (шт)','Выручка CW20 (USD)',
+      // NEW 20DC
+      'Потреб.NEW20','Заказ NEW20 (шт)','Затр. NEW20 (USD)',
+      // CW 20DC мин
+      'CW20 мин (шт)','Затр.CW20 (USD)',
+      // финансы
+      'ML 40HC (USD)','ML 20DC (USD)','Чист. бюджет (USD)',
+      // состояние парка
+      'Парк NEW40','Парк CW40','Парк ML40',
+      'Парк NEW20','Парк CW20','Парк ML20'
+    ];
+    const MNAMES=['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+    const rows = months.map(mo => [
+      MNAMES[(mo.m-1)%12],
+      mo.toCN40_cw, mo.toCN40_ml, mo.toCN40_new,
+      mo.sellCW40, mo.retML40, mo.revSell40,
+      mo.sellCW40+mo.retML40, mo.buyNEW40, mo.costNEW40,
+      mo.buyCW40, mo.costCW40,
+      mo.toCN20_cw, mo.sellCW20, mo.retML20, mo.revSell20,
+      mo.sellCW20+mo.retML20, mo.buyNEW20, mo.costNEW20,
+      mo.buyCW20, mo.costCW20,
+      mo.mlCost40, mo.mlCost20, mo.netBudget,
+      mo.parkNEW40, mo.parkCW40, mo.parkML40,
+      mo.parkNEW20, mo.parkCW20, mo.parkML20
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([header,...rows]);
+    XLSX.utils.book_append_sheet(wb, ws, `${yi+1}-й год`);
+  });
+
+  // ── Лист: Сводный бюджет 3 года
+  const budRows = [['Год','NEW закупка (USD)','CW закупка (USD)','ML аренда (USD)','Выручка CW (USD)','Чист. бюджет (USD)','Курс USD']];
+  d.yearlyPlan.forEach((months,yi) => {
+    budRows.push([
+      `${yi+1}-й год`,
+      months.reduce((s,x)=>s+x.costNEW40+x.costNEW20,0),
+      months.reduce((s,x)=>s+x.costCW40+x.costCW20,0),
+      months.reduce((s,x)=>s+x.mlCost40+x.mlCost20,0),
+      months.reduce((s,x)=>s+x.revSell40+x.revSell20,0),
+      months.reduce((s,x)=>s+x.netBudget,0),
+      USD_RUB
+    ]);
+  });
+  const budWS = XLSX.utils.aoa_to_sheet(budRows);
+  XLSX.utils.book_append_sheet(wb, budWS, 'Сводный бюджет');
+
+  // автоширина
+  [fleetWS, reqWS, budWS].forEach(function(ws){
+    var ref = ws['!ref'];
+    if(!ref) return;
+    var range = XLSX.utils.decode_range(ref);
+    var cols = [];
+    for(var R=range.s.r; R<=range.e.r; R++){
+      for(var C=range.s.c; C<=range.e.c; C++){
+        var cell = ws[XLSX.utils.encode_cell({r:R,c:C})];
+        var len = cell ? String(cell.v).length : 0;
+        if(!cols[C] || len > cols[C]) cols[C]=len;
+      }
+    }
+    ws['!cols'] = cols.map(function(w){ return {wch: Math.min((w||8)+2,40)}; });
+  });
+
+  try {
+    XLSX.writeFile(wb, 'Контейнерный_парк_план.xlsx');
+  } catch(e) {
+    exportCSV(d);
+  }
+}
+
+function exportCSV(d) {
+  var MNAMES2 = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  var lines = ['\uFEFF'];
+  lines.push('=== Сводный бюджет по годам ===');
+  lines.push('"Год";"NEW закупка (USD)";"CW закупка (USD)";"ML аренда (USD)";"Выручка CW (USD)";"Чист. бюджет (USD)";"Курс USD/RUB"');
+  d.yearlyPlan.forEach(function(months,yi){
+    var rN=0,rC=0,rML=0,rS=0,rNet=0;
+    months.forEach(function(mo){rN+=mo.costNEW40+mo.costNEW20;rC+=mo.costCW40+mo.costCW20;rML+=mo.mlCost40+mo.mlCost20;rS+=mo.revSell40+mo.revSell20;rNet+=mo.netBudget;});
+    lines.push('"'+(yi+1)+'-й год";'+rN+';'+rC+';'+rML+';'+rS+';'+rNet+';'+USD_RUB);
+  });
+  lines.push('');
+  d.yearlyPlan.forEach(function(months,yi){
+    lines.push('=== '+(yi+1)+'-й год — помесячно ===');
+    lines.push('"Месяц";"Прод.CW40";"Выр.CW40";"Прод.CW20";"Выр.CW20";"NEW40";"Стоим.NEW40";"NEW20";"Стоим.NEW20";"CW40";"Стоим.CW40";"CW20";"Стоим.CW20";"ML40";"ML20";"Чист.бюд."');
+    months.forEach(function(mo){
+      lines.push([MNAMES2[(mo.m-1)%12],mo.sellCW40,mo.revSell40,mo.sellCW20,mo.revSell20,
+        mo.buyNEW40,mo.costNEW40,mo.buyNEW20,mo.costNEW20,
+        mo.buyCW40,mo.costCW40,mo.buyCW20,mo.costCW20,
+        mo.mlCost40,mo.mlCost20,mo.netBudget].join(';'));
+    });
+    lines.push('');
+  });
+  var blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href=url; a.download='Контейнерный_парк_план.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},500);
+}
+</script>
+</body>
+</html>
